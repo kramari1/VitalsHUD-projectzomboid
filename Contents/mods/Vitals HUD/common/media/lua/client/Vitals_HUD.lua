@@ -308,6 +308,88 @@ end
 
 
 -------------------------------------------------------
+-- Moodle hover detection
+--
+-- Build 42's MoodlesUI:isMouseOver() is not always a
+-- reliable indication that the vanilla moodle tooltip
+-- is being displayed, so use the actual mouse position
+-- against the MoodlesUI bounds and keep a conservative
+-- right-edge fallback for the vanilla moodle column.
+-------------------------------------------------------
+
+local function isHoveringMoodles()
+
+    local mouseX = UIManager.getLastMouseX()
+    local mouseY = UIManager.getLastMouseY()
+
+    local moodlesUI = nil
+
+    if MoodlesUI and MoodlesUI.getInstance then
+        moodlesUI = MoodlesUI.getInstance()
+    end
+
+    if moodlesUI and moodlesUI:isVisible() then
+
+        -- Preferred check: screen coordinates against the UI element.
+        if moodlesUI:isPointOver(mouseX, mouseY) then
+            return true
+        end
+
+        -- Keep the normal hover check as a secondary test.
+        if moodlesUI:isMouseOver() then
+            return true
+        end
+
+        -- Explicit bounds check as another fallback.
+        local x = moodlesUI:getAbsoluteX()
+        local y = moodlesUI:getAbsoluteY()
+        local w = moodlesUI:getWidth()
+        local h = moodlesUI:getHeight()
+
+        if x and y and w and h then
+            if mouseX >= x - 8
+            and mouseX <= x + w + 8
+            and mouseY >= y - 8
+            and mouseY <= y + h + 8 then
+                return true
+            end
+        end
+    end
+
+    -- Final fallback for the vanilla moodle column.
+    -- The mouse has to be at the far-right edge and below
+    -- the watch/speed-control area.
+    local screenWidth = getCore():getScreenWidth()
+
+    if mouseX >= screenWidth - 90 and mouseY >= 120 then
+        return true
+    end
+
+    return false
+end
+
+
+-------------------------------------------------------
+-- Per-frame visibility update
+--
+-- Child UI elements are rendered separately from the
+-- panel, so hiding the Details button inside render()
+-- can happen too late. Do this before rendering instead.
+-------------------------------------------------------
+
+function Vitals_HUD:update()
+
+    ISPanel.update(self)
+
+    self.hideForMoodle = isHoveringMoodles()
+
+    if self.detailsButton then
+        self.detailsButton:setVisible(not self.hideForMoodle)
+    end
+end
+
+
+-------------------------------------------------------
 -- Main rendering
 -------------------------------------------------------
 
@@ -315,29 +397,10 @@ function Vitals_HUD:render()
 
     ---------------------------------------------------
     -- Hide while hovering vanilla moodles
-    --
-    -- Moodle tooltips extend left into the same area as
-    -- this HUD. While the mouse is over the moodle UI,
-    -- stop drawing the HUD and hide its Details button.
     ---------------------------------------------------
 
-    local moodlesUI = nil
-
-    if MoodlesUI then
-        moodlesUI = MoodlesUI.getInstance()
-    end
-
-    if moodlesUI and moodlesUI:isMouseOver() then
-
-        if self.detailsButton then
-            self.detailsButton:setVisible(false)
-        end
-
+    if self.hideForMoodle then
         return
-    end
-
-    if self.detailsButton then
-        self.detailsButton:setVisible(true)
     end
 
     ISPanel.render(self)
@@ -750,6 +813,7 @@ function Vitals_HUD:new()
     self.__index = self
 
     o.expanded = false
+    o.hideForMoodle = false
 
     o.background = false
     o.border = false
