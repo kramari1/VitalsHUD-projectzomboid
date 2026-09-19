@@ -1,6 +1,6 @@
 # Vitals HUD
 
-Vitals HUD is a compact, expandable status display for **Project Zomboid Build 42**.
+Vitals HUD adds a compact survivor status display for **Project Zomboid Build 42**.
 
 It provides continuous feedback for stats your survivor should reasonably be able to feel or perceive, without exposing hidden information such as zombie infection.
 
