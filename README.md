@@ -11,7 +11,6 @@ It provides continuous feedback for stats your survivor should reasonably be abl
 - Fatigue
 - Hunger
 - Thirst
-- Expandable detailed status view
 - Pain
 - Stress
 - Panic
