@@ -1,5 +1,4 @@
 require "ISUI/ISPanel"
-require "ISUI/ISButton"
 
 Vitals_HUD = ISPanel:derive("Vitals_HUD")
 
@@ -265,49 +264,6 @@ end
 
 
 -------------------------------------------------------
--- Toggle expanded panel
--------------------------------------------------------
-
-function Vitals_HUD:onToggleDetails()
-
-    self.expanded = not self.expanded
-
-    if self.expanded then
-        self.detailsButton:setTitle("Less")
-    else
-        self.detailsButton:setTitle("Details")
-        self:setHeight(132)
-    end
-end
-
-
--------------------------------------------------------
--- Button
--------------------------------------------------------
-
-function Vitals_HUD:createChildren()
-
-    ISPanel.createChildren(self)
-
-    self.detailsButton =
-        ISButton:new(
-            125,
-            101,
-            67,
-            22,
-            "Details",
-            self,
-            Vitals_HUD.onToggleDetails
-        )
-
-    self.detailsButton:initialise()
-    self.detailsButton:instantiate()
-
-    self:addChild(self.detailsButton)
-end
-
-
--------------------------------------------------------
 -- Moodle hover detection
 --
 -- Build 42's MoodlesUI:isMouseOver() is not always a
@@ -370,26 +326,6 @@ end
 
 
 -------------------------------------------------------
--- Per-frame visibility update
---
--- Child UI elements are rendered separately from the
--- panel, so hiding the Details button inside render()
--- can happen too late. Do this before rendering instead.
--------------------------------------------------------
-
-function Vitals_HUD:update()
-
-    ISPanel.update(self)
-
-    self.hideForMoodle = isHoveringMoodles()
-
-    if self.detailsButton then
-        self.detailsButton:setVisible(not self.hideForMoodle)
-    end
-end
-
-
--------------------------------------------------------
 -- Main rendering
 -------------------------------------------------------
 
@@ -399,7 +335,7 @@ function Vitals_HUD:render()
     -- Hide while hovering vanilla moodles
     ---------------------------------------------------
 
-    if self.hideForMoodle then
+    if isHoveringMoodles() then
         return
     end
 
@@ -522,19 +458,13 @@ function Vitals_HUD:render()
 
 
     ---------------------------------------------------
-    -- COLLAPSED
+    -- SECONDARY CONDITIONS
+    --
+    -- Always available. Individual conditions are
+    -- automatically hidden when their value is zero.
     ---------------------------------------------------
 
-    if not self.expanded then
-        return
-    end
-
-
-    ---------------------------------------------------
-    -- EXTENDED
-    ---------------------------------------------------
-
-    y = 137
+    y = y + 28
 
     self:drawText(
         "CURRENT CONDITIONS",
@@ -790,7 +720,7 @@ end
 function Vitals_HUD:new()
 
     local width = 200
-    local height = 132
+    local height = 260
 
     local x =
         getCore():getScreenWidth()
@@ -811,9 +741,6 @@ function Vitals_HUD:new()
     setmetatable(o, self)
 
     self.__index = self
-
-    o.expanded = false
-    o.hideForMoodle = false
 
     o.background = false
     o.border = false
@@ -839,7 +766,6 @@ local function createVitals_HUD()
         Vitals_HUD:new()
 
     hud:initialise()
-    hud:createChildren()
     hud:addToUIManager()
 
     Vitals_HUD.instance = hud
