@@ -1,6 +1,6 @@
 name=Vitals HUD
 id=Vitals_HUD
 author=kramari
-description=Vitals HUD adds a compact survivor status display for Project Zomboid Build 42. It shows health, endurance, fatigue, hunger and thirst at a glance, while additional conditions appear automatically only when active. Core body temperature is always shown using a cold / normal / hot gauge. The HUD automatically hides while hovering vanilla moodles so their tooltips remain readable. The mod is display-only and intentionally does not reveal hidden information such as zombie infection.
-modversion=0.4
+description=Vitals HUD adds a compact and customizable survivor status display for Project Zomboid Build 42. It shows health, endurance, fatigue, hunger and thirst at a glance, while additional conditions appear automatically only when active. Core body temperature is displayed using a cold / normal / hot gauge. The HUD can be moved and resized, supports bar or numeric displays, and remembers its position and settings. Optional hidden-information settings can reveal exact temperature, zombie infection status and calories, but are disabled by default. The mod is display-only and does not modify character stats or gameplay mechanics.
+modversion=0.5
 versionMin=42.0

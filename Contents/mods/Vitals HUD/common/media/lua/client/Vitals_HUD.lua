@@ -1,12 +1,96 @@
 require "ISUI/ISPanel"
+require "ISUI/ISContextMenu"
 
 Vitals_HUD = ISPanel:derive("Vitals_HUD")
 
--- HUD placement
--- Reserve room for the watch/time controls above and moodles on the right.
+
+-------------------------------------------------------
+-- Placement / persistence
+-------------------------------------------------------
+
 local RIGHT_MARGIN = 20
 local MOODLE_SPACE = 110
 local HUD_TOP = 145
+
+local HANDLE_WIDTH = 28
+local HANDLE_HEIGHT = 18
+
+local SETTINGS_FILE = "VitalsHUD_settings.txt"
+
+
+-------------------------------------------------------
+-- Size presets
+-------------------------------------------------------
+
+local SIZE_PRESETS = {
+    small = {
+        width = 180,
+        font = UIFont.Small,
+        labelWidth = 70,
+        barWidth = 95,
+        barHeight = 7,
+        rowSpacing = 16,
+        sectionGap = 24,
+        headingGap = 18,
+        textYOffset = -5,
+        conditionEndGap = 20,
+        tempColdX = 74,
+        tempNormalX = 108,
+        tempHotX = 154
+    },
+
+    normal = {
+        width = 200,
+        font = UIFont.Small,
+        labelWidth = 82,
+        barWidth = 105,
+        barHeight = 9,
+        rowSpacing = 18,
+        sectionGap = 28,
+        headingGap = 20,
+        textYOffset = -5,
+        conditionEndGap = 22,
+        tempColdX = 86,
+        tempNormalX = 116,
+        tempHotX = 168
+    },
+
+    large = {
+        width = 320,
+        font = UIFont.Medium,
+        labelWidth = 125,
+        barWidth = 180,
+        barHeight = 12,
+        rowSpacing = 26,
+        sectionGap = 38,
+        headingGap = 28,
+        textYOffset = -7,
+        conditionEndGap = 30,
+        tempColdX = 130,
+        tempNormalX = 185,
+        tempHotX = 272
+    }
+}
+
+
+-------------------------------------------------------
+-- Defaults
+-------------------------------------------------------
+
+local function defaultSettings()
+    return {
+        x = nil,
+        y = nil,
+
+        size = "normal",
+        display = "bars",
+
+        exactTemperature = false,
+
+        showZombieInfection = false,
+        showCalories = false
+    }
+end
 
 
 -------------------------------------------------------
@@ -21,6 +105,7 @@ end
 
 
 local function normaliseStat(stats, stat)
+
     local value = stats:get(stat)
     local minValue = stat:getMinimumValue()
     local maxValue = stat:getMaximumValue()
@@ -37,26 +122,858 @@ local function normaliseStat(stats, stat)
 end
 
 
+local function boolToString(value)
+    if value then
+        return "true"
+    end
+
+    return "false"
+end
+
+
+local function stringToBool(value)
+    return value == "true"
+end
+
+
+local function marked(label, selected)
+
+    if selected then
+        return "[x] " .. label
+    end
+
+    return "[ ] " .. label
+end
+
+
+local function getPreset(sizeKey)
+    return SIZE_PRESETS[sizeKey] or SIZE_PRESETS.normal
+end
+
+
+local function getDefaultHudPosition(width)
+
+    local x =
+        getCore():getScreenWidth()
+        - width
+        - RIGHT_MARGIN
+        - MOODLE_SPACE
+
+    return x, HUD_TOP
+end
+
+
 -------------------------------------------------------
--- Standard stat bar
+-- Settings persistence
 -------------------------------------------------------
 
-function Vitals_HUD:drawBar(label, value, y, r, g, b)
+local function loadSettings()
 
-    local labelWidth = 82
-    local barWidth = 105
-    local barHeight = 9
-    local barX = labelWidth + 5
+    local settings = defaultSettings()
+    local reader = getFileReader(SETTINGS_FILE, false)
+
+    if not reader then
+        return settings
+    end
+
+    while true do
+
+        local line = reader:readLine()
+
+        if not line then
+            break
+        end
+
+        local key, value =
+            string.match(
+                line,
+                "^([^=]+)=(.*)$"
+            )
+
+        if key and value then
+
+            if key == "x" then
+                settings.x = tonumber(value)
+
+            elseif key == "y" then
+                settings.y = tonumber(value)
+
+            elseif key == "size" then
+                if SIZE_PRESETS[value] then
+                    settings.size = value
+                end
+
+            elseif key == "display" then
+                if value == "bars"
+                or value == "numeric" then
+                    settings.display = value
+                end
+
+            elseif key == "exactTemperature" then
+                settings.exactTemperature =
+                    stringToBool(value)
+
+            elseif key == "showZombieInfection" then
+                settings.showZombieInfection =
+                    stringToBool(value)
+
+            elseif key == "showCalories" then
+                settings.showCalories =
+                    stringToBool(value)
+
+            end
+        end
+    end
+
+    reader:close()
+
+    return settings
+end
+
+
+local function saveSettings(settings)
+
+    local writer =
+        getFileWriter(
+            SETTINGS_FILE,
+            true,
+            false
+        )
+
+    if not writer then
+        return
+    end
+
+    if settings.x ~= nil then
+        writer:write(
+            "x="
+            .. tostring(
+                math.floor(
+                    settings.x + 0.5
+                )
+            )
+            .. "\n"
+        )
+    end
+
+    if settings.y ~= nil then
+        writer:write(
+            "y="
+            .. tostring(
+                math.floor(
+                    settings.y + 0.5
+                )
+            )
+            .. "\n"
+        )
+    end
+
+    writer:write(
+        "size="
+        .. tostring(settings.size)
+        .. "\n"
+    )
+
+    writer:write(
+        "display="
+        .. tostring(settings.display)
+        .. "\n"
+    )
+
+    writer:write(
+        "exactTemperature="
+        .. boolToString(
+            settings.exactTemperature
+        )
+        .. "\n"
+    )
+
+    writer:write(
+        "showZombieInfection="
+        .. boolToString(
+            settings.showZombieInfection
+        )
+        .. "\n"
+    )
+
+    writer:write(
+        "showCalories="
+        .. boolToString(
+            settings.showCalories
+        )
+        .. "\n"
+    )
+
+    writer:close()
+end
+
+
+-------------------------------------------------------
+-- Layout helpers
+-------------------------------------------------------
+
+function Vitals_HUD:getProfile()
+    return getPreset(self.settings.size)
+end
+
+
+function Vitals_HUD:clampPositionToScreen()
+
+    local screenWidth =
+        getCore():getScreenWidth()
+
+    local screenHeight =
+        getCore():getScreenHeight()
+
+    local maxX =
+        math.max(
+            0,
+            screenWidth - self:getWidth()
+        )
+
+    local maxY =
+        math.max(
+            0,
+            screenHeight - HANDLE_HEIGHT
+        )
+
+    self:setX(
+        clamp(
+            self:getX(),
+            0,
+            maxX
+        )
+    )
+
+    self:setY(
+        clamp(
+            self:getY(),
+            0,
+            maxY
+        )
+    )
+end
+
+
+function Vitals_HUD:rememberPosition()
+
+    self.settings.x =
+        self:getX()
+
+    self.settings.y =
+        self:getY()
+
+    saveSettings(
+        self.settings
+    )
+end
+
+
+function Vitals_HUD:applySize()
+
+    local profile =
+        self:getProfile()
+
+    self:setWidth(
+        profile.width
+    )
+
+    self:clampPositionToScreen()
+end
+
+
+-------------------------------------------------------
+-- Drag handle
+-------------------------------------------------------
+
+function Vitals_HUD:getDragHandleRect()
+
+    local profile =
+        self:getProfile()
+
+    -- Align the handle with the right edge of the actual bars,
+    -- not the wider invisible panel. This makes it feel attached
+    -- to the HUD instead of floating off to the side.
+    local contentRight =
+        profile.labelWidth
+        + 5
+        + profile.barWidth
+
+    local left =
+        contentRight
+        - HANDLE_WIDTH
+
+    return
+        left,
+        0,
+        HANDLE_WIDTH,
+        HANDLE_HEIGHT
+end
+
+
+function Vitals_HUD:isOverDragHandle(x, y)
+
+    local left,
+          top,
+          width,
+          height =
+        self:getDragHandleRect()
+
+    return x >= left
+       and x <= left + width
+       and y >= top
+       and y <= top + height
+end
+
+
+function Vitals_HUD:drawDragHandle()
+
+    local left,
+          top,
+          width,
+          height =
+        self:getDragHandleRect()
+
+    local hovered =
+        self:isOverDragHandle(
+            self:getMouseX(),
+            self:getMouseY()
+        )
+
+    local bgAlpha = 0.60
+    local borderAlpha = 0.60
+
+    if hovered then
+        bgAlpha = 0.82
+        borderAlpha = 0.95
+    end
+
+    self:drawRect(
+        left,
+        top,
+        width,
+        height,
+        bgAlpha,
+        0.05, 0.05, 0.05
+    )
+
+    self:drawRectBorder(
+        left,
+        top,
+        width,
+        height,
+        borderAlpha,
+        0.65, 0.65, 0.65
+    )
+
+    local handleText = "::"
+    local textManager =
+        getTextManager()
+
+    local textWidth =
+        textManager:MeasureStringX(
+            UIFont.Small,
+            handleText
+        )
+
+    local textX =
+        left
+        + math.floor(
+            (width - textWidth) / 2
+        )
+
+    -- Small-font text sits visually a little low if mathematically
+    -- centered, so keep a 1 px optical adjustment upward.
+    local textY = top
+
+    self:drawText(
+        handleText,
+        textX,
+        textY,
+        1, 1, 1, 1,
+        UIFont.Small
+    )
+end
+
+
+-------------------------------------------------------
+-- Movement
+-------------------------------------------------------
+
+function Vitals_HUD:onMouseDown(x, y)
+
+    if not self:isOverDragHandle(x, y) then
+        return false
+    end
+
+    self.moveWithMouse = true
+
+    ISPanel.onMouseDown(
+        self,
+        x,
+        y
+    )
+
+    return true
+end
+
+
+function Vitals_HUD:onMouseMove(dx, dy)
+
+    if not self.moveWithMouse then
+        return
+    end
+
+    ISPanel.onMouseMove(
+        self,
+        dx,
+        dy
+    )
+
+    self:clampPositionToScreen()
+end
+
+
+function Vitals_HUD:onMouseMoveOutside(dx, dy)
+
+    if not self.moveWithMouse then
+        return
+    end
+
+    ISPanel.onMouseMoveOutside(
+        self,
+        dx,
+        dy
+    )
+
+    self:clampPositionToScreen()
+end
+
+
+function Vitals_HUD:onMouseUp(x, y)
+
+    if not self.moveWithMouse then
+        return false
+    end
+
+    ISPanel.onMouseUp(
+        self,
+        x,
+        y
+    )
+
+    self.moveWithMouse = false
+
+    self:clampPositionToScreen()
+    self:rememberPosition()
+
+    return true
+end
+
+
+function Vitals_HUD:onMouseUpOutside(x, y)
+
+    if not self.moveWithMouse then
+        return false
+    end
+
+    ISPanel.onMouseUpOutside(
+        self,
+        x,
+        y
+    )
+
+    self.moveWithMouse = false
+
+    self:clampPositionToScreen()
+    self:rememberPosition()
+
+    return true
+end
+
+
+-------------------------------------------------------
+-- Options menu callbacks
+-------------------------------------------------------
+
+function Vitals_HUD:setSizeOption(sizeKey)
+
+    if not SIZE_PRESETS[sizeKey] then
+        return
+    end
+
+    self.settings.size = sizeKey
+
+    self:applySize()
+    self:rememberPosition()
+end
+
+
+function Vitals_HUD:setDisplayOption(displayMode)
+
+    if displayMode ~= "bars"
+    and displayMode ~= "numeric" then
+        return
+    end
+
+    self.settings.display =
+        displayMode
+
+    saveSettings(
+        self.settings
+    )
+end
+
+
+function Vitals_HUD:toggleExactTemperature()
+
+    self.settings.exactTemperature =
+        not self.settings.exactTemperature
+
+    saveSettings(
+        self.settings
+    )
+end
+
+
+function Vitals_HUD:toggleZombieInfection()
+
+    self.settings.showZombieInfection =
+        not self.settings.showZombieInfection
+
+    saveSettings(
+        self.settings
+    )
+end
+
+
+function Vitals_HUD:toggleCalories()
+
+    self.settings.showCalories =
+        not self.settings.showCalories
+
+    saveSettings(
+        self.settings
+    )
+end
+
+
+-------------------------------------------------------
+-- Compact options-menu styling
+-------------------------------------------------------
+
+local function makeCompactContextMenu(menu)
+
+    if not menu then
+        return
+    end
+
+    -- Keep the mod's tiny options menu visually consistent with
+    -- the compact HUD instead of inheriting a potentially very
+    -- large player Context Menu Font setting.
+    menu.font = UIFont.Small
+    menu.fontHgt =
+        getTextManager():getFontHeight(
+            UIFont.Small
+        )
+
+    menu.itemHgt =
+        math.max(
+            22,
+            menu.fontHgt + 8
+        )
+end
+
+
+-------------------------------------------------------
+-- Options menu
+-------------------------------------------------------
+
+function Vitals_HUD:showOptionsMenu(x, y)
+
+    local player = getPlayer()
+    local playerNum = 0
+
+    if player then
+        playerNum =
+            player:getPlayerNum()
+    end
+
+    local screenX =
+        self:getAbsoluteX() + x
+
+    local screenY =
+        self:getAbsoluteY() + y
+
+    local context =
+        ISContextMenu.get(
+            playerNum,
+            screenX,
+            screenY
+        )
+
+    makeCompactContextMenu(
+        context
+    )
+
+
+    ---------------------------------------------------
+    -- Size
+    ---------------------------------------------------
+
+    local sizeOption =
+        context:addOption(
+            "HUD size",
+            nil,
+            nil
+        )
+
+    local sizeMenu =
+        ISContextMenu:getNew(
+            context
+        )
+
+    makeCompactContextMenu(
+        sizeMenu
+    )
+
+    context:addSubMenu(
+        sizeOption,
+        sizeMenu
+    )
+
+    sizeMenu:addOption(
+        marked(
+            "Small",
+            self.settings.size == "small"
+        ),
+        self,
+        Vitals_HUD.setSizeOption,
+        "small"
+    )
+
+    sizeMenu:addOption(
+        marked(
+            "Normal",
+            self.settings.size == "normal"
+        ),
+        self,
+        Vitals_HUD.setSizeOption,
+        "normal"
+    )
+
+    sizeMenu:addOption(
+        marked(
+            "Large",
+            self.settings.size == "large"
+        ),
+        self,
+        Vitals_HUD.setSizeOption,
+        "large"
+    )
+
+
+    ---------------------------------------------------
+    -- Display
+    ---------------------------------------------------
+
+    local displayOption =
+        context:addOption(
+            "Display",
+            nil,
+            nil
+        )
+
+    local displayMenu =
+        ISContextMenu:getNew(
+            context
+        )
+
+    makeCompactContextMenu(
+        displayMenu
+    )
+
+    context:addSubMenu(
+        displayOption,
+        displayMenu
+    )
+
+    displayMenu:addOption(
+        marked(
+            "Bars",
+            self.settings.display == "bars"
+        ),
+        self,
+        Vitals_HUD.setDisplayOption,
+        "bars"
+    )
+
+    displayMenu:addOption(
+        marked(
+            "Numeric values",
+            self.settings.display == "numeric"
+        ),
+        self,
+        Vitals_HUD.setDisplayOption,
+        "numeric"
+    )
+
+
+    ---------------------------------------------------
+    -- Hidden values
+-- Exact temperature is handled in the normal temperature section.
+-- This section renders only additional hidden readouts.
+    ---------------------------------------------------
+
+    local hiddenOption =
+        context:addOption(
+            "Hidden values (ruins immersion)",
+            nil,
+            nil
+        )
+
+    local hiddenMenu =
+        ISContextMenu:getNew(
+            context
+        )
+
+    makeCompactContextMenu(
+        hiddenMenu
+    )
+
+    context:addSubMenu(
+        hiddenOption,
+        hiddenMenu
+    )
+
+    hiddenMenu:addOption(
+        marked(
+            "Exact temperature",
+            self.settings.exactTemperature
+        ),
+        self,
+        Vitals_HUD.toggleExactTemperature
+    )
+
+    hiddenMenu:addOption(
+        marked(
+            "Zombie infection",
+            self.settings.showZombieInfection
+        ),
+        self,
+        Vitals_HUD.toggleZombieInfection
+    )
+
+    hiddenMenu:addOption(
+        marked(
+            "Calories",
+            self.settings.showCalories
+        ),
+        self,
+        Vitals_HUD.toggleCalories
+    )
+
+end
+
+
+function Vitals_HUD:onRightMouseDown(x, y)
+
+    if self:isOverDragHandle(x, y) then
+        return true
+    end
+
+    return false
+end
+
+
+function Vitals_HUD:onRightMouseUp(x, y)
+
+    if not self:isOverDragHandle(x, y) then
+        return false
+    end
+
+    self:showOptionsMenu(
+        x,
+        y
+    )
+
+    return true
+end
+
+
+-------------------------------------------------------
+-- Standard stat display
+-------------------------------------------------------
+
+function Vitals_HUD:drawStat(
+    label,
+    value,
+    y,
+    r,
+    g,
+    b
+)
+
+    local profile =
+        self:getProfile()
+
+    local font =
+        profile.font
+
+    local labelWidth =
+        profile.labelWidth
+
+    local barWidth =
+        profile.barWidth
+
+    local barHeight =
+        profile.barHeight
+
+    local barX =
+        labelWidth + 5
+
+    local textY =
+        y + profile.textYOffset
+
 
     self:drawText(
         label,
         0,
-        y - 5,
+        textY,
         1, 1, 1, 1,
-        UIFont.Small
+        font
     )
 
-    -- Empty bar
+
+    ---------------------------------------------------
+    -- Numeric mode
+    ---------------------------------------------------
+
+    if self.settings.display == "numeric" then
+
+        local percentage =
+            math.floor(
+                clamp(value, 0, 1)
+                * 100
+                + 0.5
+            )
+
+        self:drawText(
+            tostring(percentage) .. "%",
+            barX,
+            textY,
+            r, g, b, 1,
+            font
+        )
+
+        return
+    end
+
+
+    ---------------------------------------------------
+    -- Bar mode
+    ---------------------------------------------------
+
     self:drawRect(
         barX,
         y,
@@ -66,17 +983,15 @@ function Vitals_HUD:drawBar(label, value, y, r, g, b)
         0.08, 0.08, 0.08
     )
 
-    -- Filled portion
     self:drawRect(
         barX,
         y,
-        barWidth * value,
+        barWidth * clamp(value, 0, 1),
         barHeight,
         0.9,
         r, g, b
     )
 
-    -- Border
     self:drawRectBorder(
         barX,
         y,
@@ -95,57 +1010,144 @@ end
 -- |-----------|-----------|
 -------------------------------------------------------
 
-function Vitals_HUD:drawTemperature(player, y)
+function Vitals_HUD:drawTemperature(
+    player,
+    y
+)
 
-    local bodyDamage = player:getBodyDamage()
+    local bodyDamage =
+        player:getBodyDamage()
+
     if not bodyDamage then
         return y
     end
 
-    local thermo = bodyDamage:getThermoregulator()
+    local thermo =
+        bodyDamage:getThermoregulator()
+
     if not thermo then
         return y
     end
 
-    local coreTemp = thermo:getCoreCelcius()
-    local setPoint = thermo:getSetPoint()
+    local coreTemp =
+        thermo:getCoreCelcius()
 
-    local labelWidth = 82
-    local barWidth = 105
-    local barHeight = 9
-    local barX = labelWidth + 5
+    local setPoint =
+        thermo:getSetPoint()
 
-    ---------------------------------------------------
-    -- Difference from ideal temperature
-    ---------------------------------------------------
+    local profile =
+        self:getProfile()
 
-    local delta = coreTemp - setPoint
+    local labelWidth =
+        profile.labelWidth
+
+    local barWidth =
+        profile.barWidth
+
+    local barHeight =
+        profile.barHeight
+
+    local barX =
+        labelWidth + 5
+
+    local font =
+        profile.font
+
+    local delta =
+        coreTemp - setPoint
 
     -- ±2 C fills the entire gauge.
-    -- Anything beyond that stays pinned to an end.
     local gaugeRange = 2.0
 
     local position =
         clamp(
-            0.5 + (delta / (gaugeRange * 2)),
+            0.5
+            + (
+                delta
+                / (gaugeRange * 2)
+            ),
             0,
             1
         )
+
 
     ---------------------------------------------------
     -- Label
     ---------------------------------------------------
 
+    local tempTextY =
+        y + profile.textYOffset
+
     self:drawText(
-        string.format("Temp %.1f C", coreTemp),
+        "Temp",
         0,
-        y - 5,
+        tempTextY,
         1, 1, 1, 1,
-        UIFont.Small
+        font
     )
 
+    if self.settings.exactTemperature then
+
+        local exactText =
+            string.format(
+                "%.1f C",
+                coreTemp
+            )
+
+        local textManager =
+            getTextManager()
+
+        local exactFont =
+            font
+
+        local exactX
+
+        if self.settings.size == "small" then
+
+            -- Keep the normal "Temp" label, but use Project
+            -- Zomboid's smaller NewSmall font for the optional
+            -- exact reading so it still fits before the gauge.
+            exactFont =
+                UIFont.NewSmall
+
+            local tempLabelWidth =
+                textManager:MeasureStringX(
+                    font,
+                    "Temp"
+                )
+
+            exactX =
+                tempLabelWidth + 3
+
+        else
+
+            local exactWidth =
+                textManager:MeasureStringX(
+                    exactFont,
+                    exactText
+                )
+
+            exactX =
+                math.max(
+                    42,
+                    labelWidth
+                        - exactWidth
+                        - 4
+                )
+        end
+
+        self:drawText(
+            exactText,
+            exactX,
+            tempTextY,
+            0.9, 0.9, 0.9, 1,
+            exactFont
+        )
+    end
+
+
     ---------------------------------------------------
-    -- Background
+    -- Gauge
     ---------------------------------------------------
 
     self:drawRect(
@@ -157,10 +1159,6 @@ function Vitals_HUD:drawTemperature(player, y)
         0.08, 0.08, 0.08
     )
 
-    ---------------------------------------------------
-    -- Cold half
-    ---------------------------------------------------
-
     self:drawRect(
         barX,
         y,
@@ -169,10 +1167,6 @@ function Vitals_HUD:drawTemperature(player, y)
         0.55,
         0.25, 0.45, 0.9
     )
-
-    ---------------------------------------------------
-    -- Hot half
-    ---------------------------------------------------
 
     self:drawRect(
         barX + barWidth / 2,
@@ -183,11 +1177,11 @@ function Vitals_HUD:drawTemperature(player, y)
         0.9, 0.3, 0.2
     )
 
-    ---------------------------------------------------
-    -- Ideal center marker
-    ---------------------------------------------------
-
-    local centerX = barX + (barWidth / 2)
+    local centerX =
+        barX
+        + (
+            barWidth / 2
+        )
 
     self:drawRect(
         centerX - 1,
@@ -198,12 +1192,12 @@ function Vitals_HUD:drawTemperature(player, y)
         0.2, 0.9, 0.2
     )
 
-    ---------------------------------------------------
-    -- Current temperature marker
-    ---------------------------------------------------
-
     local markerX =
-        barX + (barWidth * position)
+        barX
+        + (
+            barWidth
+            * position
+        )
 
     self:drawRect(
         markerX - 2,
@@ -213,10 +1207,6 @@ function Vitals_HUD:drawTemperature(player, y)
         1,
         1, 1, 1
     )
-
-    ---------------------------------------------------
-    -- Border
-    ---------------------------------------------------
 
     self:drawRectBorder(
         barX,
@@ -245,83 +1235,180 @@ function Vitals_HUD:drawConditionalStat(
     b
 )
 
-    local value = normaliseStat(stats, stat)
+    local value =
+        normaliseStat(
+            stats,
+            stat
+        )
 
     -- Ignore tiny rounding/noise values.
     if value <= 0.005 then
         return y, false
     end
 
-    self:drawBar(
+    self:drawStat(
         label,
         value,
         y,
-        r, g, b
+        r,
+        g,
+        b
     )
 
-    return y + 18, true
+    return
+        y + self:getProfile().rowSpacing,
+        true
 end
 
 
 -------------------------------------------------------
--- Moodle hover detection
---
--- Build 42's MoodlesUI:isMouseOver() is not always a
--- reliable indication that the vanilla moodle tooltip
--- is being displayed, so use the actual mouse position
--- against the MoodlesUI bounds and keep a conservative
--- right-edge fallback for the vanilla moodle column.
+-- Hidden values
 -------------------------------------------------------
 
-local function isHoveringMoodles()
+function Vitals_HUD:hasHiddenValuesEnabled()
 
-    local mouseX = UIManager.getLastMouseX()
-    local mouseY = UIManager.getLastMouseY()
+    -- Exact temperature is rendered in the normal BODY TEMPERATURE
+    -- section, so it should not create an otherwise-empty
+    -- HIDDEN VALUES section by itself.
+    return self.settings.showZombieInfection
+        or self.settings.showCalories
+end
 
-    local moodlesUI = nil
 
-    if MoodlesUI and MoodlesUI.getInstance then
-        moodlesUI = MoodlesUI.getInstance()
-    end
+function Vitals_HUD:drawHiddenValues(
+    player,
+    stats,
+    y
+)
 
-    if moodlesUI and moodlesUI:isVisible() then
+    local profile =
+        self:getProfile()
 
-        -- Preferred check: screen coordinates against the UI element.
-        if moodlesUI:isPointOver(mouseX, mouseY) then
-            return true
+    local font =
+        profile.font
+
+    local textManager =
+        getTextManager()
+
+    local hiddenLabelWidth =
+        math.max(
+            textManager:MeasureStringX(
+                font,
+                "Zombie infection"
+            ),
+            textManager:MeasureStringX(
+                font,
+                "Calories"
+            )
+        )
+
+    local valueX =
+        hiddenLabelWidth + 12
+
+
+    self:drawText(
+        "HIDDEN VALUES",
+        0,
+        y,
+        0.75, 0.75, 0.75, 1,
+        font
+    )
+
+    y =
+        y + profile.headingGap
+
+
+    ---------------------------------------------------
+    -- Zombie infection
+    ---------------------------------------------------
+
+    if self.settings.showZombieInfection then
+
+        local infected = false
+
+        local bodyDamage =
+            player:getBodyDamage()
+
+        if bodyDamage then
+            infected =
+                bodyDamage:isInfected()
         end
 
-        -- Keep the normal hover check as a secondary test.
-        if moodlesUI:isMouseOver() then
-            return true
+        self:drawText(
+            "Zombie infection",
+            0,
+            y,
+            1, 1, 1, 1,
+            font
+        )
+
+        if infected then
+
+            self:drawText(
+                "YES",
+                valueX,
+                y,
+                0.95, 0.25, 0.2, 1,
+                font
+            )
+
+        else
+
+            self:drawText(
+                "NO",
+                valueX,
+                y,
+                0.35, 0.85, 0.35, 1,
+                font
+            )
         end
 
-        -- Explicit bounds check as another fallback.
-        local x = moodlesUI:getAbsoluteX()
-        local y = moodlesUI:getAbsoluteY()
-        local w = moodlesUI:getWidth()
-        local h = moodlesUI:getHeight()
+        y =
+            y + profile.rowSpacing
+    end
 
-        if x and y and w and h then
-            if mouseX >= x - 8
-            and mouseX <= x + w + 8
-            and mouseY >= y - 8
-            and mouseY <= y + h + 8 then
-                return true
-            end
+
+    ---------------------------------------------------
+    -- Calories
+    ---------------------------------------------------
+
+    if self.settings.showCalories then
+
+        local calories = 0
+        local nutrition =
+            player:getNutrition()
+
+        if nutrition then
+            calories =
+                nutrition:getCalories()
         end
+
+        self:drawText(
+            "Calories",
+            0,
+            y,
+            1, 1, 1, 1,
+            font
+        )
+
+        self:drawText(
+            tostring(
+                math.floor(
+                    calories + 0.5
+                )
+            ),
+            valueX,
+            y,
+            0.9, 0.9, 0.9, 1,
+            font
+        )
+
+        y =
+            y + profile.rowSpacing
     end
 
-    -- Final fallback for the vanilla moodle column.
-    -- The mouse has to be at the far-right edge and below
-    -- the watch/speed-control area.
-    local screenWidth = getCore():getScreenWidth()
 
-    if mouseX >= screenWidth - 90 and mouseY >= 120 then
-        return true
-    end
-
-    return false
+    return y
 end
 
 
@@ -331,43 +1418,38 @@ end
 
 function Vitals_HUD:render()
 
-    ---------------------------------------------------
-    -- Hide while hovering vanilla moodles
-    ---------------------------------------------------
-
-    if isHoveringMoodles() then
-        return
-    end
-
     ISPanel.render(self)
 
-    local player = getPlayer()
+    local player =
+        getPlayer()
 
     if not player then
         return
     end
 
-    ---------------------------------------------------
-    -- Stay pinned to right side
-    ---------------------------------------------------
+    local profile =
+        self:getProfile()
 
-    self:setX(
-        getCore():getScreenWidth()
-        - self.width
-        - RIGHT_MARGIN
-        - MOODLE_SPACE
-    )
+    local stats =
+        player:getStats()
 
-    local stats = player:getStats()
 
     ---------------------------------------------------
-    -- PRIMARY
+    -- Handle
+    ---------------------------------------------------
+
+    self:drawDragHandle()
+
+
+    ---------------------------------------------------
+    -- Primary values
     ---------------------------------------------------
 
     local health =
         clamp(
             player:getBodyDamage()
-                :getOverallBodyHealth() / 100,
+                :getOverallBodyHealth()
+                / 100,
             0,
             1
         )
@@ -397,59 +1479,55 @@ function Vitals_HUD:render()
         )
 
 
-    local y = 6
-    local spacing = 18
+    local y =
+        HANDLE_HEIGHT + 6
 
 
-    ---------------------------------------------------
-    -- GOOD when full
-    ---------------------------------------------------
-
-    self:drawBar(
+    self:drawStat(
         "Health",
         health,
         y,
         0.2, 0.8, 0.2
     )
 
-    y = y + spacing
+    y =
+        y + profile.rowSpacing
 
 
-    self:drawBar(
+    self:drawStat(
         "Endurance",
         endurance,
         y,
         0.2, 0.8, 0.2
     )
 
-    y = y + spacing
+    y =
+        y + profile.rowSpacing
 
 
-    ---------------------------------------------------
-    -- BAD when full
-    ---------------------------------------------------
-
-    self:drawBar(
+    self:drawStat(
         "Fatigue",
         fatigue,
         y,
         0.9, 0.55, 0.1
     )
 
-    y = y + spacing
+    y =
+        y + profile.rowSpacing
 
 
-    self:drawBar(
+    self:drawStat(
         "Hunger",
         hunger,
         y,
         0.9, 0.55, 0.1
     )
 
-    y = y + spacing
+    y =
+        y + profile.rowSpacing
 
 
-    self:drawBar(
+    self:drawStat(
         "Thirst",
         thirst,
         y,
@@ -458,28 +1536,23 @@ function Vitals_HUD:render()
 
 
     ---------------------------------------------------
-    -- SECONDARY CONDITIONS
-    --
-    -- Always available. Individual conditions are
-    -- automatically hidden when their value is zero.
+    -- Current conditions
     ---------------------------------------------------
 
-    y = y + 28
+    y =
+        y + profile.sectionGap
 
     self:drawText(
         "CURRENT CONDITIONS",
         0,
         y,
         0.75, 0.75, 0.75, 1,
-        UIFont.Small
+        profile.font
     )
 
-    y = y + 20
+    y =
+        y + profile.headingGap
 
-
-    ---------------------------------------------------
-    -- Only visible when active
-    ---------------------------------------------------
 
     local anythingActive = false
     local shown
@@ -628,10 +1701,6 @@ function Vitals_HUD:render()
         anythingActive or shown
 
 
-    ---------------------------------------------------
-    -- Nothing wrong
-    ---------------------------------------------------
-
     if not anythingActive then
 
         self:drawText(
@@ -639,17 +1708,21 @@ function Vitals_HUD:render()
             0,
             y,
             0.4, 0.85, 0.4, 1,
-            UIFont.Small
+            profile.font
         )
 
-        y = y + 22
+        y =
+            y + profile.conditionEndGap
+
     else
-        y = y + 6
+
+        y =
+            y + 6
     end
 
 
     ---------------------------------------------------
-    -- TEMPERATURE
+    -- Temperature
     ---------------------------------------------------
 
     self:drawText(
@@ -657,59 +1730,90 @@ function Vitals_HUD:render()
         0,
         y,
         0.75, 0.75, 0.75, 1,
-        UIFont.Small
+        profile.font
     )
 
-    y = y + 20
+    y =
+        y + profile.headingGap
 
     self:drawTemperature(
         player,
         y
     )
 
-    y = y + 24
+    y =
+        y + profile.rowSpacing + 6
 
 
     ---------------------------------------------------
     -- Cold / normal / hot labels
     ---------------------------------------------------
 
+    local tempBarX =
+        profile.labelWidth + 5
+
+    local labelY =
+        y
+
+    -- Keep these labels on the small font for every HUD size.
+    -- The original fixed positions looked good at Normal size,
+    -- so each preset now has tuned positions rather than trying
+    -- to infer spacing from measured font widths.
+    local scaleFont = UIFont.Small
+
     self:drawText(
         "cold",
-        86,
-        y,
+        profile.tempColdX,
+        labelY,
         0.55, 0.7, 1, 1,
-        UIFont.Small
+        scaleFont
     )
 
     self:drawText(
         "normal",
-        116,
-        y,
+        profile.tempNormalX,
+        labelY,
         0.5, 0.9, 0.5, 1,
-        UIFont.Small
+        scaleFont
     )
 
     self:drawText(
         "hot",
-        168,
-        y,
+        profile.tempHotX,
+        labelY,
         1, 0.55, 0.45, 1,
-        UIFont.Small
+        scaleFont
     )
 
-    y = y + 24
+    y =
+        y + profile.rowSpacing + 6
 
 
     ---------------------------------------------------
-    -- End of expanded content
+    -- Optional hidden-value readouts
     ---------------------------------------------------
 
+    if self:hasHiddenValuesEnabled() then
+
+        y =
+            y + 4
+
+        y =
+            self:drawHiddenValues(
+                player,
+                stats,
+                y
+            )
+    end
+
+
     ---------------------------------------------------
-    -- Dynamically resize panel
+    -- Dynamic panel size
     ---------------------------------------------------
 
-    self:setHeight(y + 8)
+    self:setHeight(
+        y + 8
+    )
 end
 
 
@@ -719,16 +1823,62 @@ end
 
 function Vitals_HUD:new()
 
-    local width = 200
-    local height = 260
+    local settings =
+        loadSettings()
+
+    local profile =
+        getPreset(
+            settings.size
+        )
+
+    local width =
+        profile.width
+
+    local height = 300
+
+    local defaultX,
+          defaultY =
+        getDefaultHudPosition(
+            width
+        )
 
     local x =
-        getCore():getScreenWidth()
-        - width
-        - RIGHT_MARGIN
-        - MOODLE_SPACE
+        settings.x
+        or defaultX
 
-    local y = HUD_TOP
+    local y =
+        settings.y
+        or defaultY
+
+    local screenWidth =
+        getCore():getScreenWidth()
+
+    local screenHeight =
+        getCore():getScreenHeight()
+
+    x =
+        clamp(
+            x,
+            0,
+            math.max(
+                0,
+                screenWidth - width
+            )
+        )
+
+    y =
+        clamp(
+            y,
+            0,
+            math.max(
+                0,
+                screenHeight - HANDLE_HEIGHT
+            )
+        )
+
+    settings.x = x
+    settings.y = y
+
 
     local o =
         ISPanel:new(
@@ -738,12 +1888,18 @@ function Vitals_HUD:new()
             height
         )
 
-    setmetatable(o, self)
+    setmetatable(
+        o,
+        self
+    )
 
     self.__index = self
 
     o.background = false
     o.border = false
+
+    o.moveWithMouse = false
+    o.settings = settings
 
     return o
 end
@@ -761,17 +1917,43 @@ local function createVitals_HUD()
             removeFromUIManager()
     end
 
-
     local hud =
         Vitals_HUD:new()
 
     hud:initialise()
     hud:addToUIManager()
 
-    Vitals_HUD.instance = hud
+    Vitals_HUD.instance =
+        hud
+
+    saveSettings(
+        hud.settings
+    )
+end
+
+
+-------------------------------------------------------
+-- Resolution change
+-------------------------------------------------------
+
+local function onVitalsResolutionChange()
+
+    if not Vitals_HUD.instance then
+        return
+    end
+
+    Vitals_HUD.instance:
+        clampPositionToScreen()
+
+    Vitals_HUD.instance:
+        rememberPosition()
 end
 
 
 Events.OnGameStart.Add(
     createVitals_HUD
+)
+
+Events.OnResolutionChange.Add(
+    onVitalsResolutionChange
 )
